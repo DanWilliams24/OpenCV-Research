@@ -1,7 +1,7 @@
 # OpenCV-Research
 This is an experimentation project for OpenCV object detection, recognition and tracking 
 
-<b>Notes<b>:
+## Notes:
 
 Constant Detection: ObjectTracking.py
   - Allows for an accurate object tracking, but it is quite inefficient due to detection calculations being run every frame.
