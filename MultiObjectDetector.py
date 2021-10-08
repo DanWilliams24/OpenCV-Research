@@ -187,7 +187,6 @@ while True:
         tempBuff = []
         if buffer:
             counter += 1
-    original = imutils.resize(original, width=2000)
     cv2.imshow('Detector',original)
     #cv2.imshow("Yellow Detector", frame)
     key = cv2.waitKey(1) & 0xFF

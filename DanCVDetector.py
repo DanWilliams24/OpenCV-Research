@@ -29,9 +29,9 @@ class Rect:
 
     def area(self):
         return self.width*self.height
-
-
 iterations = 0
+
+#used to set the bounds values when the track bar is moved
 def callback(x):
     lower[0] = cv2.getTrackbarPos('lowH', 'Threshold')
     upper[0] = cv2.getTrackbarPos('highH', 'Threshold')
@@ -41,6 +41,8 @@ def callback(x):
     upper[2] = cv2.getTrackbarPos('highV', 'Threshold')
     iterations = cv2.getTrackbarPos('FPS', 'Threshold')
 
+
+#Defines the trackbars on init
 def defineTrackbars():
     # create trackbars for color change
     cv2.createTrackbar('lowH','Threshold',lower[0],255,callback)
@@ -52,34 +54,36 @@ def defineTrackbars():
     cv2.createTrackbar('highV','Threshold',upper[2],255,callback)
     print("[INFO] Setting up Trackers...")
 print("[INFO] Start video stream...")
+
+#set up video stream and init a few variables
 vs = VideoStream(src=0).start()
 time.sleep(2.0)
 fps = FPS().start()
 BOUNDS = 100
+
+#Create two named windows, one for the detector and one for the thresholded values
 cv2.namedWindow('Detector')
 cv2.namedWindow('Threshold')
-counter = 0
-lower = [17,90,57]
-upper = [60,255,255]
+
+
+
+lower = [15,126,82]
+upper = [47,227,255]
 tempBuff = []
 #lower = [23,58,9] #green puzzle block
 #upper = [100,255,211] #green puzzle block
 buffer = []
 defineTrackbars()
-def initTracker(view):
-    bboxes = []
-    for i in range(len(buffer)):
-        bboxes[i] = (buffer[i].x,buffer[i].y,buffer[i].width,buffer[i].height)
-        
+
+#Not used during program operation
+def initTracker(view,point,size):
+    bbox = (point[0],point[1],size[0],size[1])
     #print(bbox)
     tracked = tracker.init(view, bbox)
+    #move to global scope when in use
+    tracker = cv2.TrackerKCF_create()
 
-tracker = cv2.TrackerKCF_create()
 
-
-
-def beginTrackingLoop(frame):
-    initTracker(frame,)
 def cannyROI(subFrame):
     pass
 
@@ -89,50 +93,53 @@ def isWithinBox(box1,box2):
 def averageBoxes(box,box1):
     return Rect(int((box1.x + box.x)/2),int((box1.y + box.y)/2),int((box1.width + box.width)/2),int((box1.height + box.height)/2))
 def trackContours(frame):
-    _, contours,hierachy = cv2.findContours(frame,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+    contours,hierachy = cv2.findContours(frame,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
     cnt = 0
-    allCoords = []
-    allDimensions = []
     if len(contours) > 0:
-        cnt = contours[0]
-    for i in range(len(contours)):
-        cnt = contours[i]
-        M = cv2.moments(cnt)
-        area = M['m00']
+        largeCNT = None
+        maxArea = 0
+        for i in range(len(contours)):
+            cnt = contours[i]
+            M = cv2.moments(cnt)
+            area = M['m00']
+            if maxArea < area:
+                maxArea = area
+                largeCNT = cnt
         coords = (0,0)
         dimensions = (0,0)
-        if area > 500:
-            #print(M)
-            x,y,w,h = cv2.boundingRect(cnt)
-            coords = (x,y)
-            dimensions = (x+w,y+h)
-            #print(coords)
-            #print(dimensions)
-##            if(startTrack == 0):
-##                startTrack += 1
-##                initTracker(frame,coords,dimensions)
-            allCoords.append(coords)
-            allDimensions.append(dimensions)
-    return allCoords,allDimensions
-             
+        x,y,w,h = cv2.boundingRect(largeCNT)
+        coords = (x,y)
+        dimensions = (x+w,y+h)
+        return coords,dimensions
+    return None
+
+def adjust_gamma(image, gamma=1.0):
+	# build a lookup table mapping the pixel values [0, 255] to
+	# their adjusted gamma values
+	invGamma = 1.0 / gamma
+	table = np.array([((i / 255.0) ** invGamma) * 255
+		for i in np.arange(0, 256)]).astype("uint8")
+ 
+	# apply gamma correction using the lookup table
+	return cv2.LUT(image, table)
+            
 def tryBoxFromBuffer(box):
     for i in range(len(buffer)):
         if isWithinBox(buffer[i],box) or isWithinBox(box,buffer[i]):
             box = averageBoxes(box,buffer[i])
             tempBuff.append(box)
             return box
-        
     return box
 
 count1 = 0
-#Start Concurrent Tracking
+#Process frame and return it so that objects can be detected
 def processFrame(frame):
     frame = cv2.GaussianBlur(frame, (5, 5), 0)
     #Step 1: RGB to HSV
-    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+ 
     lower_yellow = np.array(lower)
     upper_yellow = np.array(upper)
-    #cv2.imshow('No Median Blur', frame)
+    
     #frame = cv2.medianBlur ( frame,3,frame);
     #cv2.imshow('Blur', frame)
     #Step 2: Filter colors of HSV
@@ -141,8 +148,9 @@ def processFrame(frame):
     kernel = np.ones((5,5),np.uint8)
     frame = cv2.morphologyEx(frame, cv2.MORPH_OPEN, kernel)
     frame = cv2.GaussianBlur(frame, (5, 5), 0)
-    cv2.imshow('Threshold', frame)
+ 
     return frame
+
 def relativePos(frame,box):
     (h,w) = frame.shape[:2]
     message = ""
@@ -154,40 +162,37 @@ def relativePos(frame,box):
     else:
         message = "CENTER"
     return message
+
+def switchToTracking(original):
+    if(len(buffer) > 50):
+        #possible breakpoint: If original is passed completely by value, then the new label wont show up on the screen
+        cv2.putText(original, "Tracking with", boundingBox.tl(), cv2.FONT_HERSHEY_SIMPLEX, 1,(0, 255, 0), 2, cv2.LINE_AA)
+
 while True:
     frame = vs.read()
     (h, w) = frame.shape[:2]
-    frame = imutils.resize(frame, width=800)
+    frame = imutils.resize(frame, width=400)
     original = frame
-    if counter == 5:
-        counter = 0
-        beginTrackingLoop(frame)
-        continue
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+
     frame = processFrame(frame)
-    _, contours, hierarchy = cv2.findContours(frame.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    cv2.imshow('Threshold', frame)
+    contours, hierarchy = cv2.findContours(frame.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
     if len(contours) > 0:
         #frame = cv2.drawContours(frame, contours, -1, (0,255,0), 3)
         coords, dimensions = trackContours(frame)
-        for i in range(min(len(coords),len(dimensions))):
-            x_coord = coords[i][0]
-            y_coord = coords[i][1]
-            x_dim = dimensions[i][0]
-            y_dim = dimensions[i][1]
-            boundingBox = Rect(x_coord,y_coord,x_dim-x_coord,y_dim-y_coord)
-            if boundingBox:
-                boundingBox = tryBoxFromBuffer(boundingBox)
-                #print(boundingBox.br(), boundingBox.tl())
-                original = cv2.rectangle(original,boundingBox.tl(),boundingBox.br(),(0,255,0),2)
-                message = relativePos(frame,boundingBox)
-                cv2.putText(original, message, boundingBox.tl(), cv2.FONT_HERSHEY_SIMPLEX, 1,(0, 255, 0), 2, cv2.LINE_AA)
-                cv2.putText(original, str(boundingBox.width) + " x " + str(boundingBox.height), boundingBox.br(), cv2.FONT_HERSHEY_SIMPLEX, 1,(0, 255, 0), 2, cv2.LINE_AA)
-                #do stuff with location
-        
+        boundingBox = Rect(coords[0],coords[1],dimensions[0]-coords[0],dimensions[1]-coords[1])
+        if boundingBox:
+            boundingBox = tryBoxFromBuffer(boundingBox)
+            original = cv2.rectangle(original,boundingBox.tl(),boundingBox.br(),(0,255,0),2)
+            message = relativePos(frame,boundingBox)
+            cv2.putText(original, message, boundingBox.tl(), cv2.FONT_HERSHEY_SIMPLEX, 1,(0, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(original, str(boundingBox.width) + " x " + str(boundingBox.height), boundingBox.br(), cv2.FONT_HERSHEY_SIMPLEX, 1,(0, 255, 0), 2, cv2.LINE_AA)
+            #do stuff with location
         buffer = tempBuff
         tempBuff = []
-        if buffer:
-            counter += 1
-    original = imutils.resize(original, width=2000)
+    original = imutils.resize(original, width=800)
     cv2.imshow('Detector',original)
     #cv2.imshow("Yellow Detector", frame)
     key = cv2.waitKey(1) & 0xFF
