@@ -1,4 +1,4 @@
-# OpenCV-Research
+# OpenCV-Mini Project
 This is a mini project proposed by a friend in 2018. Create a program that locks your computer if it detects that someone is in front of it.
 The idea being that in enviornments where you want to keep your computer running but still want to preserve your privacy, you can have the computer autonomously lock and screenshot someone snooping on your device without permission. 
 
